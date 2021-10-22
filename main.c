@@ -10,7 +10,7 @@ int main(){
 	{
 		char *command;
 		char *commandArray[40];
-		char *y;
+		char *argument;
 		char *z;
 	};
 	
@@ -29,7 +29,7 @@ int main(){
 		
 		//create struct allocate space
 		struct usrInput *currInput = malloc(sizeof(struct usrInput));
-
+		
 		// Exctract command
 		int i = 0;
 		char *saveptr;
@@ -52,12 +52,27 @@ int main(){
 			i++;
 			// printf("%s\n", token);
 		}
-		
-		
+
+		//set argument string
+		char space[] = " ";
+		currInput->argument = calloc(strlen(scanInput) + 1, sizeof(char));
 		for (int j = 0;j < i; j++) {
-			printf("%s \n", currInput->commandArray[j]);
+
+			//add space after each argument
+			if (j > 0) {
+				strcat(currInput->argument, space);
+			};
+
+			//add argument to string
+			strcat(currInput->argument, currInput->commandArray[j]);
+			
 		}
-		
+
+		//if there werew no arguments passed, set to null for exec() use
+		if (strlen(currInput->argument) == 0) {
+			currInput->argument = NULL;
+		};
+		printf(currInput->argument);
 		// Fork a new process
 		pid_t spawnPid = fork();
 
@@ -73,7 +88,7 @@ int main(){
 		//if child process
 		case 0:
 			
-			execlp(currInput->command, currInput->command, NULL);
+			execlp(currInput->command, currInput->command, currInput->argument, NULL);
 			exit(2);
 			break;
 
