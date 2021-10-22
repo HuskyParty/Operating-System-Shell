@@ -9,10 +9,11 @@ int main(){
 	struct usrInput
 	{
 		char *command;
-		char *x;
+		char *commandArray[40];
 		char *y;
 		char *z;
 	};
+	
 	
 	//Iterate as shell
 	while(1) {
@@ -22,15 +23,40 @@ int main(){
 		char scanInput[40];
 
 		//display prompt..get command
+		//ran into an issue with reading a sentence this resource help: https://stackoverflow.com/questions/18547004/how-to-scanf-full-sentence-in-c
 		printf(": ");
-		scanf("%s", scanInput);
-
+		scanf("%[^\n]%*c", &scanInput);
+		
 		//create struct allocate space
 		struct usrInput *currInput = malloc(sizeof(struct usrInput));
-		
-		//create property of struct and allocate space with calloc for diverse use
+
+		// Exctract command
+		int i = 0;
+		char *saveptr;
+
+		//Set command
+		char *token = strtok_r(scanInput, " ", &saveptr);
 		currInput->command = calloc(strlen(scanInput) + 1, sizeof(char));
- 		strcpy(currInput->command, scanInput);
+ 		strcpy(currInput->command, token);
+		
+		//Set argument array
+		while(1) {
+			
+			token = strtok_r(NULL, " ", &saveptr);
+			if (token==NULL) {
+				break;
+			}
+			
+			currInput->commandArray[i] = calloc(strlen(scanInput) + 1, sizeof(char));
+			strcpy(currInput->commandArray[i], token);
+			i++;
+			// printf("%s\n", token);
+		}
+		
+		
+		for (int j = 0;j < i; j++) {
+			printf("%s \n", currInput->commandArray[j]);
+		}
 		
 		// Fork a new process
 		pid_t spawnPid = fork();
@@ -47,7 +73,7 @@ int main(){
 		//if child process
 		case 0:
 			
-			printf("user input now: %s\n", currInput->command);
+			execlp(currInput->command, currInput->command, NULL);
 			exit(2);
 			break;
 
@@ -56,6 +82,8 @@ int main(){
 			//wait for child to complete
 			spawnPid = waitpid(spawnPid, &childStatus, 0);
 			
+			break;
 		} 
 	}
+	return 0;
 }
