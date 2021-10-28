@@ -10,9 +10,9 @@ int main(){
 	struct usrInput
 	{
 		char *command;
-		char *commandArray[40];
 		char *argument;
 		char *z;
+		char *commandArray[40];
 	};
 	
 	
@@ -35,22 +35,55 @@ int main(){
 			continue;
 			}
 
-
-		
 		//create struct allocate space
-		struct usrInput *currInput = malloc(sizeof(struct usrInput));
+		struct usrInput *currInput = malloc(sizeof(struct usrInput)+ 256);
 		
 		// Exctract command
 		int i = 0;
 		char *saveptr;
+		strcpy(scanInput1, scanInput);
+
+		//convert $$ to PID
+		char expand[10];
+		char newToken[256] = "";
+		char gotPid[40];
+
+		
+		//convert $$ to PID if found
+		for(int j =1; j<strlen(scanInput);j++) {
+			char one = scanInput[j-1];
+			char two = scanInput[j];
+			sprintf(expand, "%c%c", scanInput[j-1], scanInput[j]);
+			if(strcmp(expand, "$$")==0){
+				sprintf(gotPid, "%d", getpid());
+				strcat(newToken, gotPid);
+				j++;
+				continue;
+			}
+			//printf("%c \n", one);
+			// = "yo";
+			strncat(newToken, &one, 1);
+
+			if(j==strlen(scanInput)-1) {
+				strncat(newToken, &two, 1);
+			}
+			
+		}
+		
+		strcpy(scanInput, newToken);
+		
+
 
 		//Set command
 		char *token = strtok_r(scanInput, " \n", &saveptr);
+
+
 		
+		currInput->command = calloc(strlen(token)+20, sizeof(char));
 		
-		currInput->command = calloc(strlen(scanInput) + 1, sizeof(char));
  		strcpy(currInput->command, token);
 		
+		//currInput->commandArray = calloc(40, sizeof(char));
 		
 		//Set argument array
 		while(1) {
@@ -59,15 +92,19 @@ int main(){
 			
 			if (token==NULL) {
 				break;
-			}
-
+			};
 			
-			
-			currInput->commandArray[i] = calloc(strlen(scanInput) + 1, sizeof(char));
+			if (token!=NULL) {
+				
+			currInput->commandArray[i] = calloc(strlen(token)+1, sizeof(char));
 			strcpy(currInput->commandArray[i], token);
 			i++;
+
+			}
 			
 		}
+		
+		
 
 		// Fork a new process
 		pid_t spawnPid = fork();
@@ -90,7 +127,8 @@ int main(){
 		case 0:
 
 			//Allocate space to argument
-			currInput->argument = calloc(strlen(scanInput) + 1, sizeof(char));
+			currInput->argument = calloc(strlen(scanInput)+40, sizeof(char));
+			
 
 			//redirect stout first if needed
 			for (int j =0;j < i;j++){
@@ -98,7 +136,7 @@ int main(){
 				if (strcmp(currInput->commandArray[j], ">")==0){
 					char* fileName = currInput->commandArray[j+1];
 					//printf("%s", currInput->argument);
-					int fdOut = open(fileName, O_WRONLY | O_CREAT | O_TRUNC);
+					int fdOut = open(fileName, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
 
 					if (fdOut == -1){
             			printf("open() failed on \"%s\"\n", fileName);
@@ -108,7 +146,9 @@ int main(){
         			}
 					
 					dup2(fdOut, STDOUT_FILENO);
+					
 					fflush(stdout);
+					
 					break;
 					
 				}
@@ -170,6 +210,8 @@ int main(){
 
 						//wait for child to complete
 						secondSpawnPid = waitpid(secondSpawnPid, &secondChildStatus, 0);
+						close(fdIn);
+						
 						exit(1);
 						
 					};
@@ -185,14 +227,18 @@ int main(){
 				
 				//add argument to string
 				strcat(currInput->argument, currInput->commandArray[j]);
+				
 			}	
 			
 			//if there werew no arguments passed, set to null for exec() use
 			if (strlen(currInput->argument) == 0) {
 				currInput->argument = NULL;
+				
 			};
-
+			// printf("%s hi", currInput->argument);
+			// fflush(stdout);
 			execlp(currInput->command, currInput->command, currInput->argument, NULL);
+			
 			
 			break;
 
@@ -200,8 +246,13 @@ int main(){
 		default:
 			//wait for child to complete
 			spawnPid = waitpid(spawnPid, &childStatus, 0);
+			free(currInput);
+			
 			break;
 		} 
+		
 	}
+	
+	
 	return 0;
 }
