@@ -11,7 +11,7 @@ int main(){
 	{
 		char *command;
 		char *argument;
-		char *z;
+		int killPar;
 		char *commandArray[40];
 	};
 	
@@ -21,7 +21,7 @@ int main(){
 
 		//function variables
 		int childStatus;
-		int secondChildStatus;
+		
 		char scanInput[40];
 		char scanInput1[40];
 
@@ -104,8 +104,10 @@ int main(){
 			
 		}
 		
-		
-
+		//Allocate space to argument
+		currInput->argument = calloc(strlen(scanInput)+40, sizeof(char));
+		//currInput->killPar = calloc(1, sizeof(int));
+		currInput->killPar = 0;
 		// Fork a new process
 		pid_t spawnPid = fork();
 
@@ -126,8 +128,6 @@ int main(){
 		//if child process
 		case 0:
 
-			//Allocate space to argument
-			currInput->argument = calloc(strlen(scanInput)+40, sizeof(char));
 			
 
 			//redirect stout first if needed
@@ -189,32 +189,34 @@ int main(){
 					if (strlen(currInput->argument) == 0) {
 						currInput->argument = NULL;
 						};
-
-					pid_t secondSpawnPid = fork();
 					
-					//Switch between parent and child process
-					switch(secondSpawnPid){
-						//if fails to spawn
-						case -1:
-							perror("error in fork\n");
-							fflush(stdout);
-							exit(1);
-							break;
+					execlp(currInput->command, currInput->command, currInput->argument, NULL);
 
-						//if child process
-						case 0:
-						execlp(currInput->command, currInput->command, currInput->argument, NULL);
+					// pid_t secondSpawnPid = fork();
+					
+					// //Switch between parent and child process
+					// switch(secondSpawnPid){
+					// 	//if fails to spawn
+					// 	case -1:
+					// 		perror("error in fork\n");
+					// 		fflush(stdout);
+					// 		exit(1);
+					// 		break;
 
-						//parent process
-						default:
+					// 	//if child process
+					// 	case 0:
+					// 	execlp(currInput->command, currInput->command, currInput->argument, NULL);
 
-						//wait for child to complete
-						secondSpawnPid = waitpid(secondSpawnPid, &secondChildStatus, 0);
-						close(fdIn);
+					// 	//parent process
+					// 	default:
+
+					// 	//wait for child to complete
+					// 	secondSpawnPid = waitpid(secondSpawnPid, &secondChildStatus, 0);
+					// 	close(fdIn);
 						
-						exit(1);
+					// 	exit(1);
 						
-					};
+					// };
 					
 					
 					
@@ -235,8 +237,13 @@ int main(){
 				currInput->argument = NULL;
 				
 			};
-			// printf("%s hi", currInput->argument);
-			// fflush(stdout);
+			
+			if (strcmp(currInput->command, "exit")==0){
+				printf("help me");
+				currInput->killPar = 1;
+				printf("%d", currInput->killPar);
+				
+			};
 			execlp(currInput->command, currInput->command, currInput->argument, NULL);
 			
 			
@@ -244,8 +251,22 @@ int main(){
 
 		//parent process
 		default:
+
+			
 			//wait for child to complete
 			spawnPid = waitpid(spawnPid, &childStatus, 0);
+			printf("%d", currInput->killPar);
+			if (currInput->killPar == 1) {
+				printf("yup");
+			}
+			free(currInput->command);
+			
+			for(int j=0;j<i;j++) {
+				free(currInput->commandArray[j]);
+			};
+			
+			free(currInput->argument);
+			//free(currInput->killPar);
 			free(currInput);
 			
 			break;
