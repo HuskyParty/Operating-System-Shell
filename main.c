@@ -9,7 +9,7 @@ struct usrInput
 	{
 		char *command;
 		char *argument;
-		int killPar;
+		
 		int commandArraySize;
 		char *commandArray[40];
 	};
@@ -84,7 +84,7 @@ struct usrInput *parseInput(char *currLine){
 		currInput->commandArraySize = i;
 
 		currInput->argument = calloc(strlen(currLine)+40, sizeof(char));
-		currInput->killPar = 0;
+		
 
 		//iterate through command line and add to argument list
 			for (int j = 0;j < i; j++) {
@@ -138,8 +138,6 @@ int main(){
 		
 		if (strcmp(parsedInput->command, "exit")==0){
 				printf("help me");
-				parsedInput->killPar = 1;
-				printf("%d", parsedInput->killPar);
 				
 				kill(getpid(), SIGTERM);
 				
@@ -182,25 +180,24 @@ int main(){
 		case 0:
 
 			//printers for debugging
-			printf("command: %s\n", parsedInput->command);
-			fflush(stdout);
-			printf("argument: %s\n", parsedInput->argument);
-			fflush(stdout);
-			printf("arraysize: %d\n", parsedInput->commandArraySize);
-			fflush(stdout);
+			// printf("command: %s\n", parsedInput->command);
+			// fflush(stdout);
+			// printf("argument: %s\n", parsedInput->argument);
+			// fflush(stdout);
+			// printf("arraysize: %d\n", parsedInput->commandArraySize);
+			// fflush(stdout);
 
-			
+			//iterate through arguments for stdout operator
 			for (int j =0;j < parsedInput->commandArraySize;j++){
-				//add argument to string
 
-				
-				//Argument is a redirect to out
+				//FOUND
 				if (strcmp(parsedInput->commandArray[j], ">")==0){
+
+					//set file name & open
 					char* fileName = parsedInput->commandArray[j+1];
-					printf("OPERATOR %s FILE %s\n", parsedInput->commandArray[j], parsedInput->commandArray[j+1]);
-					fflush(stdout);
 					int fdOut = open(fileName, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
 
+					//didn't open
 					if (fdOut == -1){
             			printf("open() failed on \"%s\"\n", fileName);
             			perror("Error");
@@ -208,9 +205,9 @@ int main(){
             			exit(1);
         			}
 					
+					//redirect
 					dup2(fdOut, STDOUT_FILENO);
-					
-					fflush(stdout);
+
 
 					//remove off argument since processed
 					//This resource helped: https://stackoverflow.com/questions/28802938/how-to-remove-last-part-of-string-in-c/28802961
@@ -223,44 +220,46 @@ int main(){
 				}
 			}
 			
-			// //iterate through command line and add to argument list
-			// for (int j = 0;j < i; j++) {
+			//iterate through arguments for stdin operator
+			for (int j =0;j < parsedInput->commandArraySize;j++){
 
-			// 	//add space after each argument
-			// 	if (j > 0) {
-			// 		strcat(currInput->argument, space);
-			// 	};
 				
-			// 	//If redirect out: already handled..break
-			// 	//Do not remove.. will add unwanted stdout
-			// 	if (strcmp(currInput->commandArray[j], ">")==0){
-			// 		break;
-			// 		//continue;
-			// 	}
+				//If redirect out: already handled..break
+				//Do not remove.. will add unwanted stdout
+				if (strcmp(parsedInput->commandArray[j], ">")==0){
+					break;
+					//continue;
+				}
 
-			// 	//argument is a redirect from in 
-			// 	if (strcmp(currInput->commandArray[j], "<")==0){
-
-			// 		char* fileName = currInput->commandArray[j+1];
+				//FOUND 
+				if (strcmp(parsedInput->commandArray[j], "<")==0){
 					
-			// 		int fdIn = open(fileName, O_RDONLY);
+					char* fileName = parsedInput->commandArray[j+1];
+					
+					int fdIn = open(fileName, O_RDONLY);
 
-			// 		if (fdIn == -1){
-            // 			printf("open() failed on \"%s\"\n", fileName);
-            // 			perror("Error");
-			// 			fflush(stdout);
-            // 			exit(1);
-        	// 		}
+					if (fdIn == -1){
+            			printf("open() failed on \"%s\"\n", fileName);
+            			perror("Error");
+						fflush(stdout);
+            			exit(1);
+        			}
 					
 					
-			// 		dup2(fdIn, STDIN_FILENO);
+					dup2(fdIn, STDIN_FILENO);
 
-			// 		if (strlen(currInput->argument) == 0) {
-			// 			currInput->argument = NULL;
-			// 			};
+					//remove off argument since processed
+					//This resource helped: https://stackoverflow.com/questions/28802938/how-to-remove-last-part-of-string-in-c/28802961
+					char *temp;
+					temp = strchr(parsedInput->argument,'<'); 
+					*temp = '\0';  
+
+					if (strlen(parsedInput->argument) == 0) {
+						parsedInput->argument = NULL;
+						};
 					
-			// 		execlp(currInput->command, currInput->command, currInput->argument, NULL);
-
+					execlp(parsedInput->command, parsedInput->command, parsedInput->argument, NULL);
+				}}
 			// 		// pid_t secondSpawnPid = fork();
 					
 			// 		// //Switch between parent and child process
@@ -331,7 +330,7 @@ int main(){
 			};
 			
 			free(parsedInput->argument);
-			//free(currInput->killPar);
+			
 			free(parsedInput);
 			
 			break;
