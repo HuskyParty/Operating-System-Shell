@@ -145,8 +145,14 @@ int main(){
 
 		if (strcmp(parsedInput->command, "cd")==0){
 			 //chdir()
-			printf("SWITCH!\n");
-			};
+			
+			if (strlen(parsedInput->argument) == 0) {
+			chdir(getenv("HOME"));
+			}else{
+			chdir(parsedInput->argument);	
+			}
+			continue;
+		};
 
 		if (strcmp(parsedInput->command, "status")==0){
 			 //chdir()
@@ -155,11 +161,7 @@ int main(){
 		
 		//currInput->commandArray = calloc(40, sizeof(char));
 		
-		
-		
-		//Allocate space to argument
-		
-		//currInput->killPar = calloc(1, sizeof(int));
+	
 		
 		// Fork a new process
 		pid_t spawnPid = fork();
@@ -260,57 +262,13 @@ int main(){
 					
 					execlp(parsedInput->command, parsedInput->command, parsedInput->argument, NULL);
 				}}
-			// 		// pid_t secondSpawnPid = fork();
-					
-			// 		// //Switch between parent and child process
-			// 		// switch(secondSpawnPid){
-			// 		// 	//if fails to spawn
-			// 		// 	case -1:
-			// 		// 		perror("error in fork\n");
-			// 		// 		fflush(stdout);
-			// 		// 		exit(1);
-			// 		// 		break;
-
-			// 		// 	//if child process
-			// 		// 	case 0:
-			// 		// 	execlp(currInput->command, currInput->command, currInput->argument, NULL);
-
-			// 		// 	//parent process
-			// 		// 	default:
-
-			// 		// 	//wait for child to complete
-			// 		// 	secondSpawnPid = waitpid(secondSpawnPid, &secondChildStatus, 0);
-			// 		// 	close(fdIn);
-						
-			// 		// 	exit(1);
-						
-			// 		// };
-					
-					
-					
-			// 	}
-			// 	//if argument was set to NULL set back to empty str for strcat
-			// 	if (!currInput->argument) {
-			// 			currInput->argument = empty;
-			// 			};
-
-				
-			// 	//add argument to string
-			// 	strcat(currInput->argument, currInput->commandArray[j]);
-				
-			// }
 
 
-			
 			//if there werew no arguments passed, set to null for exec() use
-			if (strlen(parsedInput->argument) == 0) {
-				parsedInput->argument = NULL;
-				
-			};
-			
-			
+			if (strlen(parsedInput->argument) == 0) {parsedInput->argument = NULL;};
+
+			//run command, pass in args
 			execlp(parsedInput->command, parsedInput->command, parsedInput->argument, NULL);
-			
 			
 			break;
 
