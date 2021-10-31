@@ -19,7 +19,7 @@ struct usrInput
 struct shellSession
 	{
 		int *lastForegroundPid;
-		int pidArraySize;
+		int *pidArraySize;
 		int *pidArray[40];
 	};
 
@@ -49,8 +49,7 @@ struct usrInput *parseInput(char *currLine){
 				j++;
 				continue;
 			}
-			//printf("%c \n", one);
-			// = "yo";
+
 			strncat(newToken, &one, 1);
 
 			if(j==strlen(currLine)-1) {
@@ -134,11 +133,14 @@ int main(){
 	struct shellSession *currSession = malloc(sizeof(struct shellSession));
 	
 	currSession->lastForegroundPid = calloc(4, sizeof(int));
+	currSession->pidArraySize = calloc(4, sizeof(int));
 
+	int looper = 0;
 	
 	//Iterate as shell
 	while(1) {
-
+		looper++;
+		
 		//function variables
 		int childStatus;
 		
@@ -195,6 +197,33 @@ int main(){
 			
 			
 		};
+
+		//if command was status
+				if (strcmp(parsedInput->command, "status")==0){
+
+					if (looper == 1) {
+						printf("Looper: Exit status %d \n", WEXITSTATUS(0));
+					}
+					else {
+			
+					if(WIFEXITED(childStatus)){
+						printf("Exit status %d\n", WEXITSTATUS(childStatus));
+						fflush(stdout);
+					} else{
+						printf("Terminated by signal %d\n", WTERMSIG(childStatus));
+						fflush(stdout);
+					}
+					}
+
+					//Clean up by freeing, then continue
+					free(parsedInput->command);
+					for(int j=0;j<parsedInput->commandArraySize;j++) {
+						free(parsedInput->commandArray[j]);
+					};
+					free(parsedInput->argument);
+					free(parsedInput);
+					continue;
+				};
 		
 
 		
@@ -215,11 +244,7 @@ int main(){
 		
 		//if child process
 		case 0:
-			//sleep(10);
-			
-			// backgroundPID = getpid();
-			// printf("yep %d", parsedInput->background);
-			// fflush(stdout);
+
 
 			//if user didn't redirect stdout
 			//This helped me: https://stackoverflow.com/questions/14846768/in-c-how-do-i-redirect-stdout-fileno-to-dev-null-using-dup2-and-then-redirect  		
@@ -235,13 +260,6 @@ int main(){
 				dup2(toDevNullIn, STDIN_FILENO);
 				};
 
-			//printers for debugging
-			// printf("command: %s\n", parsedInput->command);
-			// fflush(stdout);
-			// printf("argument: %s\n", parsedInput->argument);
-			// fflush(stdout);
-			// printf("arraysize: %d\n", parsedInput->commandArraySize);
-			// fflush(stdout);
 
 			//iterate through arguments for stdout operator
 			for (int j =0;j < parsedInput->commandArraySize;j++){
@@ -295,8 +313,8 @@ int main(){
 					int fdIn = open(fileName, O_RDONLY);
 
 					if (fdIn == -1){
-            			printf("open() failed on \"%s\"\n", fileName);
-            			perror("Error");
+            			printf("cannot open %s for input\n", fileName);
+            			
 						fflush(stdout);
             			exit(1);
         			}
@@ -314,38 +332,68 @@ int main(){
 						parsedInput->argument = NULL;
 						};  
 					
-					execlp(parsedInput->command, parsedInput->command, parsedInput->argument, NULL);
+					//run command, pass in args
+					if ((execlp(parsedInput->command, parsedInput->command, parsedInput->argument, NULL)) == -1) {
+						perror("");
+						fflush(stdout);
+						exit(1);
+					};
 				}}
 
+			// parsedInput->commandArray[parsedInput->commandArraySize] = NULL;
+			
+			// for (int k =0; k < parsedInput->commandArraySize; k++) {
+			// 	printf("%s\n", parsedInput->commandArray[k]);
+			// 	fflush(stdout);
+			// }
+			
+			// execvp(parsedInput->command, parsedInput->commandArray);
 
 			//if there werew no arguments passed, set to null for exec() use
 			if (strlen(parsedInput->argument) == 0) {parsedInput->argument = NULL;};
 
-			//run command, pass in args
-			execlp(parsedInput->command, parsedInput->command, parsedInput->argument, NULL);
+				//run command, pass in args
+			if ((execlp(parsedInput->command, parsedInput->command, parsedInput->argument, NULL)) == -1) {
+					
+					perror("");
+					fflush(stdout);
+					exit(1);
+				}
 			
-			break;
+				exit(0);
+				
+				
+			
+			
+			// //break;
 
 		//parent process
 		default:
+
+		for(int j=0;j<*currSession->pidArraySize;j++) {
+				printf("%d", *currSession->pidArray[j]);
+				fflush(stdout);
+			};
 
 		
 		if (parsedInput->background == 0) {
 				
 				*currSession->lastForegroundPid = spawnPid;
-
+				
 			}
 
 			//Handle background processing
 			if (parsedInput->background > 0) {
 					
 					
-					//int backPid = spawnPid; 
-					
+				
+				currSession->pidArray[*currSession->pidArraySize] = calloc(4, sizeof(int));
+				*currSession->pidArray[*currSession->pidArraySize] = spawnPid;
+				*currSession->pidArraySize = *currSession->pidArraySize + 1;
 
-					spawnPid = waitpid(spawnPid, &childStatus, WNOHANG);
-					printf("background pid %d is done: exit value %d\n", spawnPid, WEXITSTATUS(childStatus));
-					fflush(stdout);
+				spawnPid = waitpid(spawnPid, &childStatus, WNOHANG);
+				printf("background pid %d is done: exit value %d\n", spawnPid, WEXITSTATUS(childStatus));
+				fflush(stdout);
 					
 					
 				}
@@ -353,24 +401,7 @@ int main(){
 				//wait for child to complete
 				spawnPid = waitpid(spawnPid, &childStatus, 0);
 
-				
-				//if command was status
-				if (strcmp(parsedInput->command, "status")==0){
-			
-					if(WIFEXITED(childStatus)){
-						printf("Child %d exited normally with status %d\n", *currSession->lastForegroundPid, WEXITSTATUS(childStatus));
-						fflush(stdout);
-					} else{
-						printf("Child %d exited abnormally due to signal %d\n", *currSession->lastForegroundPid, WTERMSIG(childStatus));
-						fflush(stdout);
-					}
-				}
-
-
-				
-				
 			}
-			
 
 			free(parsedInput->command);
 	
@@ -388,6 +419,11 @@ int main(){
 		
 	
 	}
+	free(&currSession->pidArraySize);
+	for(int j=0;j<*currSession->pidArraySize;j++) {
+				free(currSession->pidArray[j]);
+			};
+	
 	free(currSession->lastForegroundPid);
 	free(currSession); 
 	
