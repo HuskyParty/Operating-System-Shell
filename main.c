@@ -371,7 +371,19 @@ int main(){
 		default:
 
 		for(int j=0;j<*currSession->pidArraySize;j++) {
-				printf("%d", *currSession->pidArray[j]);
+
+			printf("%d", waitpid(*currSession->pidArray[j], &childStatus, WNOHANG));
+
+				if (waitpid(*currSession->pidArray[j], &childStatus, WNOHANG) != 0 ) {
+					printf("child %d is done", *currSession->pidArray[j]);
+					fflush(stdout);
+					//delete from array
+					free(currSession->pidArray[j]);
+					currSession->pidArray[j] = currSession->pidArray[j+1];
+					
+					*currSession->pidArraySize = *currSession->pidArraySize - 1;
+				};
+				//printf("%d", *currSession->pidArray[j]);
 				fflush(stdout);
 			};
 
