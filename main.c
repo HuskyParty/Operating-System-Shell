@@ -9,7 +9,9 @@ struct usrInput
 	{
 		char *command;
 		char *argument;
-		
+		int background;
+		int redirectOut;
+		int redirectIn;
 		int commandArraySize;
 		char *commandArray[40];
 	};
@@ -82,12 +84,30 @@ struct usrInput *parseInput(char *currLine){
 		}
 
 		currInput->commandArraySize = i;
-
+		currInput->background = 0;
+		currInput->redirectOut = 0;
+		currInput->redirectIn = 0;
 		currInput->argument = calloc(strlen(currLine)+40, sizeof(char));
 		
 
 		//iterate through command line and add to argument list
 			for (int j = 0;j < i; j++) {
+
+				if (strcmp(currInput->commandArray[j], ">") == 0) {
+					currInput->redirectOut = j + 1;
+				};
+
+				if (strcmp(currInput->commandArray[j], "<") == 0) {
+					currInput->redirectIn = j + 1;
+				};
+				
+				if (strcmp(currInput->commandArray[j], "&") == 0) {
+					currInput->background = j + 1;
+
+					if (j+1 == i) {
+						break;
+					}
+				};
 
 				//add space after each argument
 				if (j > 0) {
@@ -151,23 +171,34 @@ int main(){
 			}else{
 			chdir(parsedInput->argument);	
 			}
+
+			free(parsedInput->command);
+
+			
+			
+			for(int j=0;j<parsedInput->commandArraySize;j++) {
+				free(parsedInput->commandArray[j]);
+			};
+			
+			free(parsedInput->argument);
+			
+			free(parsedInput);
 			continue;
+			
+			
 		};
 
 		if (strcmp(parsedInput->command, "status")==0){
 			 //chdir()
 			printf("STATUS!\n");
+			
+
 			};
-		
-		//currInput->commandArray = calloc(40, sizeof(char));
-		
-	
-		
+
 		// Fork a new process
 		pid_t spawnPid = fork();
 
-		
-		
+
 		//Switch between parent and child process
 		switch(spawnPid){
 
@@ -180,6 +211,24 @@ int main(){
 		
 		//if child process
 		case 0:
+			//sleep(10);
+			if (parsedInput->background > 0) {
+				printf("background pid is %d\n", spawnPid);
+				fflush(stdout);
+			}
+			//if user didn't redirect stdout
+			//This helped me: https://stackoverflow.com/questions/14846768/in-c-how-do-i-redirect-stdout-fileno-to-dev-null-using-dup2-and-then-redirect  		
+			if ((parsedInput->redirectOut == 0) && (parsedInput->background > 0)) {
+				fflush(stdout);
+				int toDevNullOut = open("/dev/null", O_WRONLY);
+				dup2(toDevNullOut, STDOUT_FILENO);
+				};
+
+			//if user didn't redirect stdin
+			if ((parsedInput->redirectIn == 0) && (parsedInput->background > 0)) {
+				int toDevNullIn = open("/dev/null", O_RDWR);
+				dup2(toDevNullIn, STDIN_FILENO);
+				};
 
 			//printers for debugging
 			// printf("command: %s\n", parsedInput->command);
@@ -275,10 +324,31 @@ int main(){
 		//parent process
 		default:
 
+			//Handle background processing
+			if (parsedInput->background > 0) {
+					
+					
+					//int backPid = spawnPid; 
+					
+
+					spawnPid = waitpid(spawnPid, &childStatus, WNOHANG);
+					printf("background pid %d is done: exit value %d\n", spawnPid, WEXITSTATUS(childStatus));
+					fflush(stdout);
+					//spawnPid = waitpid(spawnPid, &childStatus, 0);
+					
+				}
+			else{
+				//wait for child to complete
+				spawnPid = waitpid(spawnPid, &childStatus, 0);
+				fflush(stdout);
+				
+			}
 			
-			//wait for child to complete
-			spawnPid = waitpid(spawnPid, &childStatus, 0);
+
 			
+			
+			
+
 			free(parsedInput->command);
 
 			
