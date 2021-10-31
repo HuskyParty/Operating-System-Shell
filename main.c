@@ -13,20 +13,27 @@ struct usrInput
 		int redirectOut;
 		int redirectIn;
 		int commandArraySize;
-		char *commandArray[40];
+		char *commandArray[512];
+	};
+
+struct shellSession
+	{
+		int *lastForegroundPid;
+		int pidArraySize;
+		int *pidArray[40];
 	};
 
 //parses input token and updates argument pointer
 struct usrInput *parseInput(char *currLine){
 
 	//create struct allocate space
-	struct usrInput *currInput = malloc(sizeof(struct usrInput)+ 256);
+	struct usrInput *currInput = malloc(sizeof(struct usrInput));
 
 	// Exctract command
 		
 		//convert $$ to PID
 		char expand[10];
-		char newToken[256] = "";
+		char newToken[40] = "";
 		char gotPid[40];
 		char *saveptr;
 		
@@ -123,8 +130,11 @@ struct usrInput *parseInput(char *currLine){
 }
 
 int main(){
-	//Struct to contain user command
 	
+	struct shellSession *currSession = malloc(sizeof(struct shellSession));
+	
+	currSession->lastForegroundPid = calloc(4, sizeof(int));
+
 	
 	//Iterate as shell
 	while(1) {
@@ -143,62 +153,56 @@ int main(){
 		if (sscanf(scanInput, "%s", scanInput1) == -1){
 			
 			continue;
-			}
-
-		
+			}	
 
 		//parse command here
-		struct usrInput *parsedInput = parseInput(scanInput);
-		
-		
-		//printf("%s show", scanInput);
-
-		//Set command
-		
+		struct usrInput *parsedInput = parseInput(scanInput);		
 		
 		if (strcmp(parsedInput->command, "exit")==0){
-				printf("help me");
+				
+				//Clean up by freeing, then continue
+				free(parsedInput->command);
+				for(int j=0;j<parsedInput->commandArraySize;j++) {
+					free(parsedInput->commandArray[j]);
+				};
+				free(parsedInput->argument);
+				free(parsedInput);
+
+				free(currSession->lastForegroundPid);
+				free(currSession); 
 				
 				kill(getpid(), SIGTERM);
 				
 			};
 
 		if (strcmp(parsedInput->command, "cd")==0){
-			 //chdir()
+			 
 			
 			if (strlen(parsedInput->argument) == 0) {
 			chdir(getenv("HOME"));
 			}else{
 			chdir(parsedInput->argument);	
 			}
-
+			
+			//Clean up by freeing, then continue
 			free(parsedInput->command);
-
-			
-			
 			for(int j=0;j<parsedInput->commandArraySize;j++) {
 				free(parsedInput->commandArray[j]);
 			};
-			
 			free(parsedInput->argument);
-			
 			free(parsedInput);
 			continue;
 			
 			
 		};
+		
 
-		if (strcmp(parsedInput->command, "status")==0){
-			 //chdir()
-			printf("STATUS!\n");
-			
-
-			};
+		
 
 		// Fork a new process
 		pid_t spawnPid = fork();
 
-
+		
 		//Switch between parent and child process
 		switch(spawnPid){
 
@@ -212,10 +216,11 @@ int main(){
 		//if child process
 		case 0:
 			//sleep(10);
-			if (parsedInput->background > 0) {
-				printf("background pid is %d\n", spawnPid);
-				fflush(stdout);
-			}
+			
+			// backgroundPID = getpid();
+			// printf("yep %d", parsedInput->background);
+			// fflush(stdout);
+
 			//if user didn't redirect stdout
 			//This helped me: https://stackoverflow.com/questions/14846768/in-c-how-do-i-redirect-stdout-fileno-to-dev-null-using-dup2-and-then-redirect  		
 			if ((parsedInput->redirectOut == 0) && (parsedInput->background > 0)) {
@@ -307,7 +312,7 @@ int main(){
 
 					if (strlen(parsedInput->argument) == 0) {
 						parsedInput->argument = NULL;
-						};
+						};  
 					
 					execlp(parsedInput->command, parsedInput->command, parsedInput->argument, NULL);
 				}}
@@ -324,6 +329,13 @@ int main(){
 		//parent process
 		default:
 
+		
+		if (parsedInput->background == 0) {
+				
+				*currSession->lastForegroundPid = spawnPid;
+
+			}
+
 			//Handle background processing
 			if (parsedInput->background > 0) {
 					
@@ -334,25 +346,34 @@ int main(){
 					spawnPid = waitpid(spawnPid, &childStatus, WNOHANG);
 					printf("background pid %d is done: exit value %d\n", spawnPid, WEXITSTATUS(childStatus));
 					fflush(stdout);
-					//spawnPid = waitpid(spawnPid, &childStatus, 0);
+					
 					
 				}
 			else{
 				//wait for child to complete
 				spawnPid = waitpid(spawnPid, &childStatus, 0);
-				fflush(stdout);
+
+				
+				//if command was status
+				if (strcmp(parsedInput->command, "status")==0){
+			
+					if(WIFEXITED(childStatus)){
+						printf("Child %d exited normally with status %d\n", *currSession->lastForegroundPid, WEXITSTATUS(childStatus));
+						fflush(stdout);
+					} else{
+						printf("Child %d exited abnormally due to signal %d\n", *currSession->lastForegroundPid, WTERMSIG(childStatus));
+						fflush(stdout);
+					}
+				}
+
+
+				
 				
 			}
 			
 
-			
-			
-			
-
 			free(parsedInput->command);
-
-			
-			
+	
 			for(int j=0;j<parsedInput->commandArraySize;j++) {
 				free(parsedInput->commandArray[j]);
 			};
@@ -362,10 +383,13 @@ int main(){
 			free(parsedInput);
 			
 			break;
-		} 
+		}
 		
-	}
+		
 	
+	}
+	free(currSession->lastForegroundPid);
+	free(currSession); 
 	
 	return 0;
 }
