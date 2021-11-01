@@ -8,7 +8,6 @@
 struct usrInput
 	{
 		char *command;
-		char *argument;
 		int background;
 		int redirectOut;
 		int redirectIn;
@@ -41,9 +40,9 @@ struct usrInput *parseInput(char *currLine){
 	// Exctract command
 		
 		//convert $$ to PID
-		char expand[10];
-		char newToken[40] = "";
-		char gotPid[40];
+		char expand[2048];
+		char newToken[2048] = "";
+		char gotPid[2048];
 		char *saveptr;
 		
 	
@@ -70,17 +69,21 @@ struct usrInput *parseInput(char *currLine){
 
 		char *token = strtok_r(currLine, " \n", &saveptr);
 
-		currInput->command = calloc(strlen(token)+20, sizeof(char));
+		currInput->command = calloc(strlen(token)+1, sizeof(char));
 		
  		strcpy(currInput->command, token);
 		int i = 0;
-
-		//set argument string
-		char space[] = " ";
 		
-
+		
 		//Set argument array
 		while(1) {
+
+			if (i==0) {
+				currInput->commandArray[i] = calloc(strlen(currInput->command)+1, sizeof(char));
+				strcpy(currInput->commandArray[i], currInput->command);
+				i++;
+				continue;
+			};
 			
 			
 			token = strtok_r(NULL, " \n", &saveptr);
@@ -94,17 +97,16 @@ struct usrInput *parseInput(char *currLine){
 			currInput->commandArray[i] = calloc(strlen(token)+1, sizeof(char));
 			strcpy(currInput->commandArray[i], token);
 			i++;
-
 			}
-			
 		}
+
+		
 
 		currInput->commandArraySize = i;
 		currInput->background = 0;
 		currInput->redirectOut = 0;
 		currInput->redirectIn = 0;
 		currInput->comment = 0;
-		currInput->argument = calloc(strlen(currLine)+40, sizeof(char));
 		
 
 		//Check if command is a comment, and set indicator for execution skip later
@@ -117,6 +119,8 @@ struct usrInput *parseInput(char *currLine){
 		}
 		//iterate through command line and add to argument list
 			for (int j = 0;j < i; j++) {
+
+				if (j > 0) {
 
 				if (strcmp(currInput->commandArray[j], ">") == 0) {
 					currInput->redirectOut = j + 1;
@@ -133,15 +137,8 @@ struct usrInput *parseInput(char *currLine){
 						break;
 					}
 				};
-
-				//add space after each argument
-				if (j > 0) {
-					strcat(currInput->argument, space);
-				};
-
-				//add argument to string
-				strcat(currInput->argument, currInput->commandArray[j]);
 				
+			}
 			}
 
 	return currInput;
@@ -163,8 +160,8 @@ int main(){
 		
 		//function variables
 		int childStatus;
-		char scanInput[40];
-		char scanInput1[40];
+		char scanInput[2048];
+		char scanInput1[2048];
 
 
 		//display prompt..get command
@@ -176,7 +173,7 @@ int main(){
 		
 		printf(": ");
 		fflush(stdout);
-		fgets(scanInput,40,stdin);
+		fgets(scanInput,2048,stdin);
 		if (sscanf(scanInput, "%s", scanInput1) == -1){
 			continue;
 			}	
@@ -195,7 +192,7 @@ int main(){
 				for(int j=0;j<parsedInput->commandArraySize;j++) {
 					free(parsedInput->commandArray[j]);
 				};
-				free(parsedInput->argument);
+				
 				free(parsedInput);
 
 				//Clean up by freeing curr session
@@ -215,13 +212,15 @@ int main(){
 			 
 			//if user only enters cd withouth arguments
 			//take to home dir
-			if (strlen(parsedInput->argument) == 0) {
+			if (parsedInput->commandArraySize == 1) {
+				
+			 fflush(stdout);
 			chdir(getenv("HOME"));
 			}
 
 			//if user specifies where to go
 			else{
-			chdir(parsedInput->argument);	
+			chdir(parsedInput->commandArray[1]);	
 			}
 			
 			//Clean up by freeing parsed-input
@@ -229,7 +228,7 @@ int main(){
 			for(int j=0;j<parsedInput->commandArraySize;j++) {
 				free(parsedInput->commandArray[j]);
 			};
-			free(parsedInput->argument);
+			
 			free(parsedInput);
 			continue;
 		};
@@ -255,7 +254,7 @@ int main(){
 			for(int j=0;j<parsedInput->commandArraySize;j++) {
 				free(parsedInput->commandArray[j]);
 			};
-			free(parsedInput->argument);
+			
 			free(parsedInput);
 			continue;
 		};
@@ -294,9 +293,20 @@ int main(){
 				dup2(toDevNullIn, STDIN_FILENO);
 				};
 
-
+			parsedInput->commandArray[parsedInput->commandArraySize] = NULL;
 			//iterate through arguments for stdout operator
 			for (int j =0;j < parsedInput->commandArraySize;j++){
+				
+				//if background operator, remove from command
+				if (strcmp(parsedInput->commandArray[j], "&")==0){
+					//free before removing
+					free(parsedInput->commandArray[j]);
+					
+					//set next element to current	
+					parsedInput->commandArray[j] = parsedInput->commandArray[j+1];
+					parsedInput->commandArraySize--;
+					continue;
+				};
 
 				//FOUND
 				if (strcmp(parsedInput->commandArray[j], ">")==0){
@@ -316,16 +326,15 @@ int main(){
 					//redirect
 					dup2(fdOut, STDOUT_FILENO);
 
+					//free before removing
+					free(parsedInput->commandArray[j]);
+					free(parsedInput->commandArray[j+1]);
+					//set next element to current	
+					parsedInput->commandArray[j] = parsedInput->commandArray[j+2];
+					parsedInput->commandArraySize--;
+					parsedInput->commandArraySize--;
 
-					//remove off argument since processed
-						// Citation for the following code:
-						// Date: 28/10/2021
-						// Adapted from: stackoverflow
-						// Source URL: https://stackoverflow.com/questions/28802938/how-to-remove-last-part-of-string-in-c/28802961
 					
-					char *temp;
-					temp = strchr(parsedInput->argument,'>'); 
-					*temp = '\0';  
 					break;
 					
 				}
@@ -346,6 +355,8 @@ int main(){
 
 				//FOUND redirect in
 				if (strcmp(parsedInput->commandArray[j], "<")==0){
+
+					
 					
 					//set source
 					char* fileName = parsedInput->commandArray[j+1];
@@ -360,44 +371,40 @@ int main(){
 					
 					//sys redirect
 					dup2(fdIn, STDIN_FILENO);
+ 
 
-					//remove off argument since processed
-						// Citation for the following code:
-						// Date: 29/10/2021
-						// Adapted from : stackoverflow
-						// Source URL:https://stackoverflow.com/questions/28802938/how-to-remove-last-part-of-string-in-c/28802961
+					//free before removing
+					free(parsedInput->commandArray[j]);
+					free(parsedInput->commandArray[j+1]);
 					
-					char *temp;
-					temp = strchr(parsedInput->argument,'<'); 
-					*temp = '\0';  
-
-					//if no arguments ensure it is set to no so execlp can properly work
-					if (strlen(parsedInput->argument) == 0) {
-						parsedInput->argument = NULL;
-						};  
+					//set next element to current	
+					parsedInput->commandArray[j] = parsedInput->commandArray[j+2];
 					
-					//run command, pass in args.. show errors if fail
-					if ((execlp(parsedInput->command, parsedInput->command, parsedInput->argument, NULL)) == -1) {
-						perror("");
-						fflush(stdout);
-						exit(1);
-					};
+					parsedInput->commandArraySize--;
+					parsedInput->commandArraySize--;
+					
 				}}
+
+				
 
 			/*PROCESS COMMAND*/
 
-			//if there werew no arguments passed, set to null for exec() use
-			if (strlen(parsedInput->argument) == 0) {parsedInput->argument = NULL;};
 
-			//run command, pass in args
-			if ((execlp(parsedInput->command, parsedInput->command, parsedInput->argument, NULL)) == -1) {
+			
+			
+			parsedInput->commandArray[parsedInput->commandArraySize] = NULL;
+
+			
+			if (execvp(parsedInput->command, parsedInput->commandArray) != 0) {
 				if (parsedInput->comment > 0) {
 					break;
 				}
+					
 					perror("");
 					fflush(stdout);
 					exit(1);
-				}
+				};
+
 
 				//all went well exit normal
 				exit(0);
@@ -465,7 +472,7 @@ int main(){
 			for(int j=0;j<parsedInput->commandArraySize;j++) {
 				free(parsedInput->commandArray[j]);
 			};
-			free(parsedInput->argument);
+
 			free(parsedInput);
 			break;
 		}
