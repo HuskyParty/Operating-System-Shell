@@ -12,6 +12,7 @@ struct usrInput
 		int background;
 		int redirectOut;
 		int redirectIn;
+		int comment;
 		int commandArraySize;
 		char *commandArray[512];
 	};
@@ -93,9 +94,18 @@ struct usrInput *parseInput(char *currLine){
 		currInput->background = 0;
 		currInput->redirectOut = 0;
 		currInput->redirectIn = 0;
+		currInput->comment = 0;
 		currInput->argument = calloc(strlen(currLine)+40, sizeof(char));
 		
 
+		//Check if command is a comment, and set indicator for execution skip later
+		for(int i = 0; i < strlen(currInput->command);i++){
+		if (currInput->command[i] == '#') {
+			
+					currInput->comment = 1;
+					fflush(stdout);
+				};
+		}
 		//iterate through command line and add to argument list
 			for (int j = 0;j < i; j++) {
 
@@ -170,6 +180,11 @@ int main(){
 				free(parsedInput->argument);
 				free(parsedInput);
 
+				for(int j=0;j<*currSession->pidArraySize;j++) {
+					free(currSession->pidArray[j]);
+				};
+
+				free(currSession->pidArraySize);
 				free(currSession->lastForegroundPid);
 				free(currSession); 
 				
@@ -204,9 +219,11 @@ int main(){
 					if (looper == 1) {
 						printf("Looper: Exit status %d \n", WEXITSTATUS(0));
 					}
+
 					else {
 			
 					if(WIFEXITED(childStatus)){
+						
 						printf("Exit status %d\n", WEXITSTATUS(childStatus));
 						fflush(stdout);
 					} else{
@@ -354,6 +371,9 @@ int main(){
 
 				//run command, pass in args
 			if ((execlp(parsedInput->command, parsedInput->command, parsedInput->argument, NULL)) == -1) {
+				if (parsedInput->comment > 0) {
+					break;
+				}
 					
 					perror("");
 					fflush(stdout);
@@ -362,9 +382,7 @@ int main(){
 			
 				exit(0);
 				
-				
-			
-			
+					
 			// //break;
 
 		//parent process
@@ -372,10 +390,18 @@ int main(){
 
 		for(int j=0;j<*currSession->pidArraySize;j++) {
 
-			printf("%d", waitpid(*currSession->pidArray[j], &childStatus, WNOHANG));
 
 				if (waitpid(*currSession->pidArray[j], &childStatus, WNOHANG) != 0 ) {
-					printf("child %d is done", *currSession->pidArray[j]);
+			
+					if(WIFEXITED(childStatus)){
+						printf("Background pid %d is done, exit status %d\n", *currSession->pidArray[j], childStatus);
+						fflush(stdout);
+					} else{
+						printf("Background pid %d is done, terminated by signal %d\n", *currSession->pidArray[j], WTERMSIG(childStatus));
+						fflush(stdout);
+					}
+					
+					
 					fflush(stdout);
 					//delete from array
 					free(currSession->pidArray[j]);
@@ -404,7 +430,7 @@ int main(){
 				*currSession->pidArraySize = *currSession->pidArraySize + 1;
 
 				spawnPid = waitpid(spawnPid, &childStatus, WNOHANG);
-				printf("background pid %d is done: exit value %d\n", spawnPid, WEXITSTATUS(childStatus));
+				printf("background pid is %d\n", *currSession->pidArray[*currSession->pidArraySize - 1]);
 				fflush(stdout);
 					
 					
@@ -416,13 +442,10 @@ int main(){
 			}
 
 			free(parsedInput->command);
-	
 			for(int j=0;j<parsedInput->commandArraySize;j++) {
 				free(parsedInput->commandArray[j]);
 			};
-			
 			free(parsedInput->argument);
-			
 			free(parsedInput);
 			
 			break;
@@ -431,11 +454,12 @@ int main(){
 		
 	
 	}
-	free(&currSession->pidArraySize);
 	for(int j=0;j<*currSession->pidArraySize;j++) {
-				free(currSession->pidArray[j]);
-			};
+		free(currSession->pidArray[j]);
+		};
 	
+	free(&currSession->pidArraySize);
+
 	free(currSession->lastForegroundPid);
 	free(currSession); 
 	
