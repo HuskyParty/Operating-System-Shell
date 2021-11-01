@@ -24,6 +24,14 @@ struct shellSession
 		int *pidArray[40];
 	};
 
+
+void handle_SIGINT(int signo){
+	char* message = "Caught SIGINT, sleeping for 10 seconds\n";
+	// We are using write rather than printf
+	write(STDOUT_FILENO, message, 39);
+	sleep(10);
+}
+
 //parses input token and updates argument pointer
 struct usrInput *parseInput(char *currLine){
 
@@ -73,6 +81,7 @@ struct usrInput *parseInput(char *currLine){
 
 		//Set argument array
 		while(1) {
+			
 			
 			token = strtok_r(NULL, " \n", &saveptr);
 			
@@ -140,11 +149,12 @@ struct usrInput *parseInput(char *currLine){
 
 int main(){
 	
+	//struct to track overall user session info
 	struct shellSession *currSession = malloc(sizeof(struct shellSession));
-	
 	currSession->lastForegroundPid = calloc(4, sizeof(int));
 	currSession->pidArraySize = calloc(4, sizeof(int));
 
+	//count loops, used for session PID tracking
 	int looper = 0;
 	
 	//Iterate as shell
@@ -153,26 +163,34 @@ int main(){
 		
 		//function variables
 		int childStatus;
-		
 		char scanInput[40];
 		char scanInput1[40];
 
+
 		//display prompt..get command
-		//ran into an issue with reading a sentence this resource help: https://stackoverflow.com/questions/18547004/how-to-scanf-full-sentence-in-c
+		//ran into an issue with reading a sentence this resource help: 
+			// Citation for the following code:
+			// Date: 25/10/2021
+			// Adapted from: stackoverflow
+			// Source URL:https://stackoverflow.com/questions/18547004/how-to-scanf-full-sentence-in-c
+		
 		printf(": ");
 		fflush(stdout);
 		fgets(scanInput,40,stdin);
 		if (sscanf(scanInput, "%s", scanInput1) == -1){
-			
 			continue;
 			}	
 
-		//parse command here
-		struct usrInput *parsedInput = parseInput(scanInput);		
-		
+		//parse command with parsedInput Struct
+		struct usrInput *parsedInput = parseInput(scanInput);	
+
+
+		/*Built in Commands: ls, cd, exit*/
+
+		//if user enteres exit
 		if (strcmp(parsedInput->command, "exit")==0){
 				
-				//Clean up by freeing, then continue
+				//Clean up by freeing parsed input
 				free(parsedInput->command);
 				for(int j=0;j<parsedInput->commandArraySize;j++) {
 					free(parsedInput->commandArray[j]);
@@ -180,28 +198,33 @@ int main(){
 				free(parsedInput->argument);
 				free(parsedInput);
 
+				//Clean up by freeing curr session
 				for(int j=0;j<*currSession->pidArraySize;j++) {
 					free(currSession->pidArray[j]);
 				};
-
 				free(currSession->pidArraySize);
 				free(currSession->lastForegroundPid);
 				free(currSession); 
 				
-				kill(getpid(), SIGTERM);
-				
+				//kill parent and child processes
+				kill(getpid(), SIGINT);
 			};
 
+		//if user enteres cd
 		if (strcmp(parsedInput->command, "cd")==0){
 			 
-			
+			//if user only enters cd withouth arguments
+			//take to home dir
 			if (strlen(parsedInput->argument) == 0) {
 			chdir(getenv("HOME"));
-			}else{
+			}
+
+			//if user specifies where to go
+			else{
 			chdir(parsedInput->argument);	
 			}
 			
-			//Clean up by freeing, then continue
+			//Clean up by freeing parsed-input
 			free(parsedInput->command);
 			for(int j=0;j<parsedInput->commandArraySize;j++) {
 				free(parsedInput->commandArray[j]);
@@ -209,62 +232,56 @@ int main(){
 			free(parsedInput->argument);
 			free(parsedInput);
 			continue;
-			
-			
 		};
 
 		//if command was status
-				if (strcmp(parsedInput->command, "status")==0){
-
-					if (looper == 1) {
-						printf("Looper: Exit status %d \n", WEXITSTATUS(0));
-					}
-
-					else {
+		if (strcmp(parsedInput->command, "status")==0){
 			
-					if(WIFEXITED(childStatus)){
-						
-						printf("Exit status %d\n", WEXITSTATUS(childStatus));
-						fflush(stdout);
-					} else{
-						printf("Terminated by signal %d\n", WTERMSIG(childStatus));
-						fflush(stdout);
-					}
-					}
+			//No child processes yet on first loop so exit with good status
+			if (looper == 1) {printf("Exit status %d \n", WEXITSTATUS(0));}
 
-					//Clean up by freeing, then continue
-					free(parsedInput->command);
-					for(int j=0;j<parsedInput->commandArraySize;j++) {
-						free(parsedInput->commandArray[j]);
-					};
-					free(parsedInput->argument);
-					free(parsedInput);
-					continue;
-				};
-		
+			//Any other loop, will determin if a process exited abnormally or not
+			else {if(WIFEXITED(childStatus)){ 
+				printf("Exit status %d\n", WEXITSTATUS(childStatus));
+				fflush(stdout);
+			
+			//abnormal exit
+			} else{
+				printf("Terminated by signal %d\n", WTERMSIG(childStatus));
+				fflush(stdout);}}
 
+			//Clean up by freeing parsed input
+			free(parsedInput->command);
+			for(int j=0;j<parsedInput->commandArraySize;j++) {
+				free(parsedInput->commandArray[j]);
+			};
+			free(parsedInput->argument);
+			free(parsedInput);
+			continue;
+		};
 		
 
 		// Fork a new process
 		pid_t spawnPid = fork();
 
-		
 		//Switch between parent and child process
 		switch(spawnPid){
 
-		//if fails to spawn
+		//if fails to fork
 		case -1:
-			perror("error in fork\n");
+			perror("error in the fork\n");
 			fflush(stdout);
 			exit(1);
 			break;
 		
-		//if child process
+		//if fork works, run child process
 		case 0:
 
-
 			//if user didn't redirect stdout
-			//This helped me: https://stackoverflow.com/questions/14846768/in-c-how-do-i-redirect-stdout-fileno-to-dev-null-using-dup2-and-then-redirect  		
+				// Citation for the following code:
+				// Date: 28/10/2021
+				// Adapted from: stackoverflow
+				// Source URL: https://stackoverflow.com/questions/14846768/in-c-how-do-i-redirect-stdout-fileno-to-dev-null-using-dup2-and-then-redirect  		
 			if ((parsedInput->redirectOut == 0) && (parsedInput->background > 0)) {
 				fflush(stdout);
 				int toDevNullOut = open("/dev/null", O_WRONLY);
@@ -301,11 +318,14 @@ int main(){
 
 
 					//remove off argument since processed
-					//This resource helped: https://stackoverflow.com/questions/28802938/how-to-remove-last-part-of-string-in-c/28802961
+						// Citation for the following code:
+						// Date: 28/10/2021
+						// Adapted from: stackoverflow
+						// Source URL: https://stackoverflow.com/questions/28802938/how-to-remove-last-part-of-string-in-c/28802961
+					
 					char *temp;
 					temp = strchr(parsedInput->argument,'>'); 
 					*temp = '\0';  
-					
 					break;
 					
 				}
@@ -322,34 +342,41 @@ int main(){
 					//continue;
 				}
 
-				//FOUND 
+			/*PROCESS REDIRECT IN */
+
+				//FOUND redirect in
 				if (strcmp(parsedInput->commandArray[j], "<")==0){
 					
+					//set source
 					char* fileName = parsedInput->commandArray[j+1];
-					
 					int fdIn = open(fileName, O_RDONLY);
 
+					//file open failed
 					if (fdIn == -1){
             			printf("cannot open %s for input\n", fileName);
-            			
 						fflush(stdout);
             			exit(1);
         			}
 					
-					
+					//sys redirect
 					dup2(fdIn, STDIN_FILENO);
 
 					//remove off argument since processed
-					//This resource helped: https://stackoverflow.com/questions/28802938/how-to-remove-last-part-of-string-in-c/28802961
+						// Citation for the following code:
+						// Date: 29/10/2021
+						// Adapted from : stackoverflow
+						// Source URL:https://stackoverflow.com/questions/28802938/how-to-remove-last-part-of-string-in-c/28802961
+					
 					char *temp;
 					temp = strchr(parsedInput->argument,'<'); 
 					*temp = '\0';  
 
+					//if no arguments ensure it is set to no so execlp can properly work
 					if (strlen(parsedInput->argument) == 0) {
 						parsedInput->argument = NULL;
 						};  
 					
-					//run command, pass in args
+					//run command, pass in args.. show errors if fail
 					if ((execlp(parsedInput->command, parsedInput->command, parsedInput->argument, NULL)) == -1) {
 						perror("");
 						fflush(stdout);
@@ -357,42 +384,34 @@ int main(){
 					};
 				}}
 
-			// parsedInput->commandArray[parsedInput->commandArraySize] = NULL;
-			
-			// for (int k =0; k < parsedInput->commandArraySize; k++) {
-			// 	printf("%s\n", parsedInput->commandArray[k]);
-			// 	fflush(stdout);
-			// }
-			
-			// execvp(parsedInput->command, parsedInput->commandArray);
+			/*PROCESS COMMAND*/
 
 			//if there werew no arguments passed, set to null for exec() use
 			if (strlen(parsedInput->argument) == 0) {parsedInput->argument = NULL;};
 
-				//run command, pass in args
+			//run command, pass in args
 			if ((execlp(parsedInput->command, parsedInput->command, parsedInput->argument, NULL)) == -1) {
 				if (parsedInput->comment > 0) {
 					break;
 				}
-					
 					perror("");
 					fflush(stdout);
 					exit(1);
 				}
-			
+
+				//all went well exit normal
 				exit(0);
-				
-					
-			// //break;
 
 		//parent process
 		default:
 
-		for(int j=0;j<*currSession->pidArraySize;j++) {
+			//check to see if a child processed in th background completed
+			for(int j=0;j<*currSession->pidArraySize;j++) {
 
-
+				//found completed child
 				if (waitpid(*currSession->pidArray[j], &childStatus, WNOHANG) != 0 ) {
-			
+					
+					//exit messages
 					if(WIFEXITED(childStatus)){
 						printf("Background pid %d is done, exit status %d\n", *currSession->pidArray[j], childStatus);
 						fflush(stdout);
@@ -401,65 +420,62 @@ int main(){
 						fflush(stdout);
 					}
 					
-					
-					fflush(stdout);
+
 					//delete from array
-					free(currSession->pidArray[j]);
-					currSession->pidArray[j] = currSession->pidArray[j+1];
+						// Citation for the following code:
+						// Date: 30/10/2021
+						// Adapted from : programmingsimplified.com
+						// Source URL:https://www.programmingsimplified.com/c/source-code/c-program-delete-element-from-array
 					
+					//free before removing
+					free(currSession->pidArray[j]);
+
+					//set next element to current	
+					currSession->pidArray[j] = currSession->pidArray[j+1];
 					*currSession->pidArraySize = *currSession->pidArraySize - 1;
 				};
-				//printf("%d", *currSession->pidArray[j]);
-				fflush(stdout);
 			};
 
-		
-		if (parsedInput->background == 0) {
+		//track most current foreground process for status function 
+		if (parsedInput->background == 0) {*currSession->lastForegroundPid = spawnPid;}
+
+		//Handle background processing and tracking
+		if (parsedInput->background > 0) {
 				
-				*currSession->lastForegroundPid = spawnPid;
-				
+			//add elements to an array that records any process 
+			//that was run in background
+			currSession->pidArray[*currSession->pidArraySize] = calloc(4, sizeof(int));
+			*currSession->pidArray[*currSession->pidArraySize] = spawnPid;
+			*currSession->pidArraySize = *currSession->pidArraySize + 1;
+			
+			//Will not wait to complete, hence background
+			spawnPid = waitpid(spawnPid, &childStatus, WNOHANG);
+			printf("background pid is %d\n", *currSession->pidArray[*currSession->pidArraySize - 1]);
+			fflush(stdout);
 			}
+		//Handle foreground processing
+		else{
 
-			//Handle background processing
-			if (parsedInput->background > 0) {
-					
-					
-				
-				currSession->pidArray[*currSession->pidArraySize] = calloc(4, sizeof(int));
-				*currSession->pidArray[*currSession->pidArraySize] = spawnPid;
-				*currSession->pidArraySize = *currSession->pidArraySize + 1;
+			//wait for child to complete
+			spawnPid = waitpid(spawnPid, &childStatus, 0);}
 
-				spawnPid = waitpid(spawnPid, &childStatus, WNOHANG);
-				printf("background pid is %d\n", *currSession->pidArray[*currSession->pidArraySize - 1]);
-				fflush(stdout);
-					
-					
-				}
-			else{
-				//wait for child to complete
-				spawnPid = waitpid(spawnPid, &childStatus, 0);
 
-			}
-
+			//clean up by freeing parsed input
 			free(parsedInput->command);
 			for(int j=0;j<parsedInput->commandArraySize;j++) {
 				free(parsedInput->commandArray[j]);
 			};
 			free(parsedInput->argument);
 			free(parsedInput);
-			
 			break;
 		}
-		
-		
-	
 	}
+
+	//clean up by freeing user session struct
 	for(int j=0;j<*currSession->pidArraySize;j++) {
 		free(currSession->pidArray[j]);
 		};
-	
 	free(&currSession->pidArraySize);
-
 	free(currSession->lastForegroundPid);
 	free(currSession); 
 	
