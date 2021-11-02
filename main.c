@@ -4,6 +4,8 @@
 #include <unistd.h>   // for execv, getpid, fork
 #include <string.h>   // string functions
 #include <fcntl.h>
+#include <signal.h>
+
 
 struct usrInput
 	{
@@ -21,15 +23,8 @@ struct shellSession
 		int *lastForegroundPid;
 		int *pidArraySize;
 		int *pidArray[40];
+		int *foreground;
 	};
-
-
-void handle_SIGINT(int signo){
-	char* message = "Caught SIGINT, sleeping for 10 seconds\n";
-	// We are using write rather than printf
-	write(STDOUT_FILENO, message, 39);
-	sleep(10);
-}
 
 //parses input token and updates argument pointer
 struct usrInput *parseInput(char *currLine){
@@ -144,16 +139,104 @@ struct usrInput *parseInput(char *currLine){
 	return currInput;
 }
 
+int foreground = 0;
+
 int main(){
-	
+
 	//struct to track overall user session info
 	struct shellSession *currSession = malloc(sizeof(struct shellSession));
 	currSession->lastForegroundPid = calloc(4, sizeof(int));
 	currSession->pidArraySize = calloc(4, sizeof(int));
+	currSession->foreground = calloc(4, sizeof(int));
+	*currSession->foreground = 0;
+
+	// Handler for SIGNINT
+void handle_SIGTSTP(int signo){
+
+	if(foreground == 0){
+		char* message = "\nEntering foreground-only mode (& is now ignored)\n:";
+		write(STDOUT_FILENO, message, 50);
+		foreground = 1;
+		clearerr(stdin); // reset stdin status
+	}
+	else{
+		
+		char* message = "\nExiting foreground-only mode\n:";
+		write(STDOUT_FILENO, message, 30);
+		foreground = 0;
+		clearerr(stdin); // reset stdin status
+		clearerr(stdout);
+	};
+	
+	// Raise SIGUSR2. However, since this signal is blocked until handle_SIGNIT
+	// finishes, it will be delivered only when handle_SIGINT finishes
+	// Sleep for 10 seconds
+	sleep(1);
+}
+
+void handle_SIGINT(int signo){
+	
+	sleep(1);
+	clearerr(stdin); // reset stdin status
+}
+
+// Handler for SIGUSR2
+void handle_SIGUSR2(int signo){
+	char* message = "Caught SIGUSR2, exiting!\n";
+	write(STDOUT_FILENO, message, 25);
+	clearerr(stdin); // reset stdin status
+	exit(0);
+}
+
+	// Initialize SIGINT_action struct to be empty
+	struct sigaction SIGTSTP_action = {{0}}, SIGINT_action = {{0}}, SIGUSR2_action = {{0}}, ignore_action = {{0}};
+
+	/*SIGINT_action*/
+
+		//Fill out the SIGINT_action struct
+
+		// Register handle_SIGINT as the signal handler
+		SIGINT_action.sa_handler = handle_SIGINT;
+		// Block all catchable signals while handle_SIGINT is running
+		sigfillset(&SIGINT_action.sa_mask);
+		// No flags set
+		SIGINT_action.sa_flags = SA_RESTART;
+		sigaction(SIGINT, &SIGINT_action, NULL);
+		
+	/*handle_SIGSTP */
+
+
+		//Fill out the SIGINT_action struct
+		// Register handle_SIGINT as the signal handler
+		SIGTSTP_action.sa_handler = handle_SIGTSTP;
+		// Block all catchable signals while handle_SIGINT is running
+		sigfillset(&SIGTSTP_action.sa_mask);
+		// No flags set
+		SIGTSTP_action.sa_flags = SA_RESTART;
+		sigaction(SIGTSTP, &SIGTSTP_action, NULL);
+
+	/*handle_SIGUSR2 */
+
+		//Fill out the SIGUSR2_action struct
+
+		// Register handle_SIGUSR2 as the signal handler
+		SIGUSR2_action.sa_handler = handle_SIGUSR2;
+		// Block all catchable signals while handle_SIGUSR2 is running
+		sigfillset(&SIGUSR2_action.sa_mask);
+		// No flags set
+		SIGUSR2_action.sa_flags = SA_RESTART;
+		sigaction(SIGUSR2, &SIGUSR2_action, NULL);
+		
+	// The ignore_action struct as SIG_IGN as its signal handler
+	 ignore_action.sa_handler = SIG_IGN;
+
+
+	
 
 	//count loops, used for session PID tracking
 	int looper = 0;
 	
+
 	//Iterate as shell
 	while(1) {
 		looper++;
@@ -201,10 +284,11 @@ int main(){
 				};
 				free(currSession->pidArraySize);
 				free(currSession->lastForegroundPid);
+				free(currSession->foreground);
 				free(currSession); 
 				
 				//kill parent and child processes
-				kill(getpid(), SIGINT);
+				kill(getpid(), SIGTERM);
 			};
 
 		//if user enteres cd
@@ -274,8 +358,10 @@ int main(){
 			break;
 		
 		//if fork works, run child process
-		case 0:
-
+		case 0: ;
+		
+			sigaction(SIGTSTP, &ignore_action, NULL);
+			sigaction(SIGINT, &ignore_action, NULL);
 			//if user didn't redirect stdout
 				// Citation for the following code:
 				// Date: 28/10/2021
@@ -411,7 +497,7 @@ int main(){
 
 		//parent process
 		default:
-
+			
 			//check to see if a child processed in th background completed
 			for(int j=0;j<*currSession->pidArraySize;j++) {
 
@@ -447,8 +533,8 @@ int main(){
 		if (parsedInput->background == 0) {*currSession->lastForegroundPid = spawnPid;}
 
 		//Handle background processing and tracking
-		if (parsedInput->background > 0) {
-				
+		if ((parsedInput->background > 0) && foreground != 1) {
+
 			//add elements to an array that records any process 
 			//that was run in background
 			currSession->pidArray[*currSession->pidArraySize] = calloc(4, sizeof(int));
@@ -462,10 +548,18 @@ int main(){
 			}
 		//Handle foreground processing
 		else{
+			//sigaction(SIGTSTP, &ignore_action, NULL);
+			sigaction(SIGINT, &SIGUSR2_action, NULL);
 
 			//wait for child to complete
 			spawnPid = waitpid(spawnPid, &childStatus, 0);}
-
+			
+			SIGTSTP_action.sa_handler = handle_SIGTSTP;
+		// Block all catchable signals while handle_SIGINT is running
+		sigfillset(&SIGTSTP_action.sa_mask);
+		// No flags set
+		SIGTSTP_action.sa_flags = SA_RESTART;
+			sigaction(SIGTSTP, &SIGTSTP_action, NULL);
 
 			//clean up by freeing parsed input
 			free(parsedInput->command);
@@ -474,8 +568,9 @@ int main(){
 			};
 
 			free(parsedInput);
-			break;
+			
 		}
+		continue;
 	}
 
 	//clean up by freeing user session struct
@@ -484,6 +579,7 @@ int main(){
 		};
 	free(&currSession->pidArraySize);
 	free(currSession->lastForegroundPid);
+	free(currSession->foreground);
 	free(currSession); 
 	
 	return 0;
